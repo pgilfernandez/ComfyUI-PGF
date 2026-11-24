@@ -97,7 +97,7 @@ class PGFLoadTextFile:
         return {
             "required": {
                 "folder": ("STRING", {"default": "", "tooltip": "Absolute folder path"}),
-                "index": ("INT", {"default": 0, "min": 0, "max": 2147483647}),
+                "index": ("INT", {"default": 0, "max": 2147483647}),
             }
         }
 
@@ -108,6 +108,7 @@ class PGFLoadTextFile:
 
     @classmethod
     def IS_CHANGED(cls, folder, index):
+        index = max(0, index)
         try:
             files = list_text_files(folder)
             if 0 <= index < len(files):
@@ -119,6 +120,7 @@ class PGFLoadTextFile:
         return float("nan")
 
     def load(self, folder, index):
+        index = max(0, index)
         files = list_text_files(folder)
         total = len(files)
         if total == 0:

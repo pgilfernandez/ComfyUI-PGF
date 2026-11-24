@@ -48,6 +48,7 @@ app.registerExtension({
 
         const folder = node.widgets.find((widget) => widget.name === "folder");
         const index = node.widgets.find((widget) => widget.name === "index");
+        index.options.min = 0;
         let pickingFolder = false;
         const browseButton = node.addWidget("button", "Browse folder", null, async () => {
             if (pickingFolder) return;
@@ -128,6 +129,7 @@ app.registerExtension({
         }
 
         function syncSelection() {
+            if (index.value < 0) index.value = 0;
             if (!fileLabels.length) return;
 
             const label = fileLabels[index.value];
@@ -188,6 +190,7 @@ app.registerExtension({
         const configure = node.onConfigure;
         node.onConfigure = function (...args) {
             const result = configure?.apply(this, args);
+            syncSelection();
             void refresh();
             return result;
         };

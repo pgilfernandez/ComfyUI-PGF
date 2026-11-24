@@ -1,9 +1,49 @@
 import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 
+function addFilePicker(node) {
+    const file = node.widgets.find((widget) => widget.name === "file");
+    let picking = false;
+    const button = node.addWidget("button", "Browse file", null, async () => {
+        if (picking) return;
+        picking = true;
+        try {
+            const response = await api.fetchApi("/pgf/pick-file", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ file: file.value }),
+            });
+            if (!response.headers.get("content-type")?.includes("application/json")) {
+                throw new Error(`File picker returned HTTP ${response.status}.`);
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error ?? response.statusText);
+            if (result.file === null || !node.graph) return;
+
+            file.value = result.file;
+            file.callback?.(file.value, app.canvas, node);
+            node.setDirtyCanvas(true, true);
+            app.extensionManager?.workflow?.activeWorkflow?.changeTracker?.captureCanvasState?.();
+        } catch (error) {
+            app.extensionManager.toast.add({
+                severity: "error",
+                summary: "Could not browse files",
+                detail: error.message,
+            });
+        } finally {
+            picking = false;
+        }
+    }, { serialize: false });
+    button.serialize = false;
+}
+
 app.registerExtension({
     name: "PGF.TextFiles",
     nodeCreated(node) {
+        if (node.comfyClass === "PGFLoadSingleTextFile") {
+            addFilePicker(node);
+            return;
+        }
         if (node.comfyClass !== "PGFLoadTextFile") return;
 
         const folder = node.widgets.find((widget) => widget.name === "folder");

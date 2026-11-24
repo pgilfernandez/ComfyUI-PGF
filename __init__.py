@@ -10,7 +10,7 @@ from aiohttp import web
 from server import PromptServer
 
 WEB_DIRECTORY = "./web"
-folder_picker_lock = asyncio.Lock()
+picker_lock = asyncio.Lock()
 
 
 def list_text_files(folder):
@@ -37,37 +37,42 @@ async def get_text_files(request):
     return web.json_response({"files": [path.name for path in files]})
 
 
-@PromptServer.instance.routes.post("/pgf/pick-folder")
-async def pick_folder(request):
+@PromptServer.instance.routes.post("/pgf/pick-{kind:folder|file}")
+async def pick_path(request):
+    kind = request.match_info["kind"]
     try:
         remote = ipaddress.ip_address(request.remote)
         remote = getattr(remote, "ipv4_mapped", None) or remote
     except ValueError:
-        return web.json_response({"error": "Folder picker requires a local connection."}, status=403)
+        return web.json_response({"error": "The system picker requires a local connection."}, status=403)
     if not remote.is_loopback:
-        return web.json_response({"error": "Folder picker requires a local connection."}, status=403)
+        return web.json_response({"error": "The system picker requires a local connection."}, status=403)
 
     if request.content_type != "application/json":
         return web.json_response({"error": "Expected a JSON request."}, status=415)
     try:
         body = await request.json()
-        initial_folder = body["folder"]
-        if not isinstance(initial_folder, str) or "\0" in initial_folder:
+        initial_path = body[kind]
+        if not isinstance(initial_path, str) or "\0" in initial_path:
             raise ValueError
     except (KeyError, TypeError, ValueError):
-        return web.json_response({"error": "Invalid folder path."}, status=400)
+        return web.json_response({"error": "Invalid path."}, status=400)
 
-    if folder_picker_lock.locked():
-        return web.json_response({"error": "A folder picker is already open."}, status=409)
+    if picker_lock.locked():
+        return web.json_response({"error": "A system picker is already open."}, status=409)
 
-    async with folder_picker_lock:
+    async with picker_lock:
         try:
             if sys.platform != "win32":
-                return web.json_response({"error": "The native folder picker requires Windows."}, status=501)
+                return web.json_response({"error": "The system picker requires Windows."}, status=501)
 
             script = Path(__file__).with_name("_folder_picker.ps1")
             encoded_script = base64.b64encode(script.read_text(encoding="utf-8").encode("utf-16-le")).decode("ascii")
-            env = {**os.environ, "PGF_FOLDER_PICKER_START": initial_folder.strip().strip('"')}
+            env = {
+                **os.environ,
+                "PGF_PICKER_KIND": kind,
+                "PGF_FOLDER_PICKER_START": initial_path.strip().strip('"'),
+            }
             result = await asyncio.to_thread(
                 subprocess.run,
                 ["powershell.exe", "-NoProfile", "-STA", "-EncodedCommand", encoded_script],
@@ -78,11 +83,11 @@ async def pick_folder(request):
                 env=env,
                 timeout=300,
             )
-            folder = result.stdout or None
+            path = result.stdout or None
         except (OSError, ValueError, subprocess.SubprocessError):
-            return web.json_response({"error": "Could not open the system folder picker."}, status=503)
+            return web.json_response({"error": "Could not open the system picker."}, status=503)
 
-    return web.json_response({"folder": folder})
+    return web.json_response({kind: path})
 
 
 class PGFLoadTextFile:
@@ -124,5 +129,40 @@ class PGFLoadTextFile:
         return (path.read_text(encoding="utf-8-sig"), path.stem, index, total)
 
 
-NODE_CLASS_MAPPINGS = {"PGFLoadTextFile": PGFLoadTextFile}
-NODE_DISPLAY_NAME_MAPPINGS = {"PGFLoadTextFile": "PGF - Load Text Files"}
+class PGFLoadSingleTextFile:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"file": ("STRING", {"default": "", "tooltip": "Absolute .txt file path"})}}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "load"
+    CATEGORY = "PGF/Text"
+
+    @staticmethod
+    def text_path(file):
+        path = Path(file.strip().strip('"')).expanduser()
+        if not path.is_absolute() or path.suffix.lower() != ".txt":
+            raise ValueError("Choose a .txt file or enter its absolute path.")
+        return path
+
+    @classmethod
+    def IS_CHANGED(cls, file):
+        try:
+            stat = cls.text_path(file).stat()
+            return (stat.st_mtime_ns, stat.st_size)
+        except (OSError, ValueError, RuntimeError):
+            return float("nan")
+
+    def load(self, file):
+        return (self.text_path(file).read_text(encoding="utf-8-sig"),)
+
+
+NODE_CLASS_MAPPINGS = {
+    "PGFLoadTextFile": PGFLoadTextFile,
+    "PGFLoadSingleTextFile": PGFLoadSingleTextFile,
+}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "PGFLoadTextFile": "PGF - Load Text Files",
+    "PGFLoadSingleTextFile": "PGF - Load Text File",
+}

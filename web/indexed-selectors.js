@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 
 const selectorInputs = {
     PGFImageSelector: { prefix: "image", type: "IMAGE" },
+    PGFBooleanSelector: { prefix: "boolean", type: "BOOLEAN" },
     PGFDurationSelector: { prefix: "duration", type: "FLOAT" },
 };
 

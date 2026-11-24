@@ -195,6 +195,12 @@ class PGFImageSelector(IndexedSelector):
     CATEGORY = f"{NODE_CATEGORY}/Image"
 
 
+class PGFBooleanSelector(IndexedSelector):
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("boolean",)
+    CATEGORY = f"{NODE_CATEGORY}/Logic"
+
+
 class PGFDurationSelector(IndexedSelector):
     RETURN_TYPES = ("FLOAT", "INT")
     RETURN_NAMES = ("duration", "duration_int")
@@ -209,11 +215,13 @@ NODE_CLASS_MAPPINGS = {
     "PGFLoadTextFile": PGFLoadTextFile,
     "PGFLoadSingleTextFile": PGFLoadSingleTextFile,
     "PGFImageSelector": PGFImageSelector,
+    "PGFBooleanSelector": PGFBooleanSelector,
     "PGFDurationSelector": PGFDurationSelector,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PGFLoadTextFile": "PGF - Load Text Files",
     "PGFLoadSingleTextFile": "PGF - Load Text File",
     "PGFImageSelector": "PGF - Image selector",
+    "PGFBooleanSelector": "PGF - Boolean selector",
     "PGFDurationSelector": "PGF - Duration selector",
 }

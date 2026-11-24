@@ -10,6 +10,7 @@ app.registerExtension({
         const getLink = (name) => node.inputs?.find((input) => input.name === name)?.link ?? null;
         const editor = getWidget("editor");
         const useEditor = getWidget("use_editor");
+        const sourceText = getWidget("source_text");
         const fields = ["text", "path", "filename"];
         let resolved = null;
         let busy = false;
@@ -26,6 +27,10 @@ app.registerExtension({
 
         setHidden(useEditor, true);
         useEditor.computeSize = () => [0, -4];
+        if (sourceText) {
+            setHidden(sourceText, true);
+            sourceText.computeSize = () => [0, -4];
+        }
         const originalEdit = editor.callback;
         editor.callback = function (...args) {
             useEditor.value = true;
@@ -84,7 +89,7 @@ app.registerExtension({
         const browseSize = browse.computeSize;
 
         const save = node.addWidget("button", "Save .txt", null, () => runAction(async () => {
-            if (getLink("text") !== null && !useEditor.value) resolvedValue("text");
+            if (getLink("text") !== null) resolvedValue("text");
             const result = await request("/pgf/save-edited-text", {
                 path: resolvedValue("path"),
                 filename: resolvedValue("filename"),
@@ -121,8 +126,11 @@ app.registerExtension({
             resolved = Object.fromEntries(fields.map((name) => [
                 name, { link: getLink(name), text: message[name]?.[0] },
             ]));
-            if (!useEditor.value && typeof resolved.text.text === "string") {
+            if (message.load_source?.[0] && editor.value === message.editor_at_run?.[0]
+                && typeof resolved.text.text === "string") {
                 editor.value = resolved.text.text;
+                if (sourceText) sourceText.value = message.source_text?.[0] ?? "";
+                useEditor.value = true;
                 changed();
             }
             return result;

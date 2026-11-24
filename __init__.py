@@ -117,11 +117,11 @@ async def save_edited_text(request):
         if not all(isinstance(value, str) for value in (path, filename, text)):
             raise ValueError("Expected a folder, filename and text.")
         directory = Path(path.strip().strip('"')).expanduser()
-        if not directory.is_absolute():
-            raise ValueError("Enter the absolute path of a folder.")
+        if not directory.is_absolute() or not directory.is_dir():
+            raise ValueError("Enter the absolute path of an existing folder.")
         filename = filename.strip()
         if filename.lower().endswith(".txt"):
-            filename = filename[:-4]
+            raise ValueError("Enter the filename without the .txt extension.")
         if not filename or filename.endswith((".", " ")) or any(
             char in '<>:"/\\|?*' or ord(char) < 32 for char in filename
         ):
@@ -228,6 +228,7 @@ class PGFEditTextFile:
                 "path": ("STRING", {"default": "", "tooltip": "Absolute folder path"}),
                 "filename": ("STRING", {"default": "", "tooltip": "Filename without .txt"}),
                 "use_editor": ("BOOLEAN", {"default": False}),
+                "source_text": ("STRING", {"default": ""}),
             },
             "optional": {"text": ("STRING", {"forceInput": True})},
         }
@@ -238,9 +239,20 @@ class PGFEditTextFile:
     OUTPUT_NODE = True
     CATEGORY = f"{NODE_CATEGORY}/Text"
 
-    def edited_text(self, editor, path, filename, use_editor, text=None):
-        result = editor if use_editor or text is None else text
-        return {"ui": {"path": [path], "filename": [filename], "text": [result]}, "result": (result,)}
+    def edited_text(self, editor, path, filename, use_editor, source_text="", text=None):
+        load_source = text is not None and (not use_editor or text != source_text)
+        result = text if load_source else editor
+        return {
+            "ui": {
+                "path": [path],
+                "filename": [filename],
+                "text": [result],
+                "source_text": [text],
+                "editor_at_run": [editor],
+                "load_source": [load_source],
+            },
+            "result": (result,),
+        }
 
 
 class IndexedSelector:

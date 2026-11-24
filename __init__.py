@@ -10,6 +10,7 @@ from aiohttp import web
 from server import PromptServer
 
 WEB_DIRECTORY = "./web"
+NODE_CATEGORY = "🐬 PGF"
 picker_lock = asyncio.Lock()
 MAX_IMAGE_INPUTS = 100
 
@@ -104,7 +105,7 @@ class PGFLoadTextFile:
     RETURN_TYPES = ("STRING", "STRING", "INT", "INT")
     RETURN_NAMES = ("text", "file_name", "index", "total")
     FUNCTION = "load"
-    CATEGORY = "PGF/Text"
+    CATEGORY = f"{NODE_CATEGORY}/Text"
 
     @classmethod
     def IS_CHANGED(cls, folder, index):
@@ -140,7 +141,7 @@ class PGFLoadSingleTextFile:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
     FUNCTION = "load"
-    CATEGORY = "PGF/Text"
+    CATEGORY = f"{NODE_CATEGORY}/Text"
 
     @staticmethod
     def text_path(file):
@@ -177,7 +178,7 @@ class PGFImageSelector:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "select"
-    CATEGORY = "PGF/Image"
+    CATEGORY = f"{NODE_CATEGORY}/Image"
 
     def check_lazy_status(self, index, **images):
         name = f"image_{index}"

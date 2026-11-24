@@ -26,22 +26,22 @@ app.registerExtension({
                     changed = true;
                 }
             }
-            connected.forEach((input, position) => {
+            const orderedInputs = spare ? [...connected, spare] : connected;
+            orderedInputs.forEach((input, position) => {
                 const name = `image_${position}`;
-                if (input.name !== name) {
+                const hasNumberedLabel = /^image_\d+$/.test(input.label);
+                if (input.name !== name || input.localized_name !== name
+                    || (hasNumberedLabel && input.label !== name)) {
                     input.name = name;
+                    input.localized_name = name;
+                    if (hasNumberedLabel) input.label = name;
                     changed = true;
                 }
             });
-            if (connected.length < maxInputs) {
+            if (!spare && connected.length < maxInputs) {
                 const name = `image_${connected.length}`;
-                if (!spare) {
-                    node.addInput(name, "IMAGE");
-                    changed = true;
-                } else if (spare.name !== name) {
-                    spare.name = name;
-                    changed = true;
-                }
+                node.addInput(name, "IMAGE", { localized_name: name });
+                changed = true;
             }
             if (changed) {
                 const [width, height] = node.computeSize();

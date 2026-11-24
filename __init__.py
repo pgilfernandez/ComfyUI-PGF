@@ -158,7 +158,7 @@ class PGFLoadTextFile:
         }
 
     RETURN_TYPES = ("STRING", "STRING", "INT", "INT", "STRING")
-    RETURN_NAMES = ("text", "file_name", "index", "total", "path")
+    RETURN_NAMES = ("text", "filename", "index", "total", "path")
     FUNCTION = "load"
     CATEGORY = f"{NODE_CATEGORY}/Text"
 

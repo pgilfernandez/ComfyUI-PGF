@@ -16,13 +16,19 @@ picker_lock = asyncio.Lock()
 MAX_SELECTOR_INPUTS = 100
 
 
-def list_text_files(folder):
+def text_directory(folder):
     if not folder.strip():
-        return []
+        return None
 
     directory = Path(folder.strip().strip('"')).expanduser()
     if not directory.is_absolute():
         raise ValueError("Enter an absolute folder path.")
+    return directory
+
+
+def list_text_files(directory):
+    if directory is None:
+        return []
 
     return sorted(
         (path for path in directory.iterdir()
@@ -34,7 +40,8 @@ def list_text_files(folder):
 @PromptServer.instance.routes.get("/pgf/text-files")
 async def get_text_files(request):
     try:
-        files = await asyncio.to_thread(list_text_files, request.query.get("folder", ""))
+        directory = text_directory(request.query.get("folder", ""))
+        files = await asyncio.to_thread(list_text_files, directory)
     except (OSError, ValueError, RuntimeError) as error:
         return web.json_response({"error": str(error)}, status=400)
     return web.json_response({"files": [path.name for path in files]})
@@ -150,8 +157,8 @@ class PGFLoadTextFile:
             }
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "INT", "INT")
-    RETURN_NAMES = ("text", "file_name", "index", "total")
+    RETURN_TYPES = ("STRING", "STRING", "INT", "INT", "STRING")
+    RETURN_NAMES = ("text", "file_name", "index", "total", "path")
     FUNCTION = "load"
     CATEGORY = f"{NODE_CATEGORY}/Text"
 
@@ -159,7 +166,7 @@ class PGFLoadTextFile:
     def IS_CHANGED(cls, folder, index):
         index = max(0, index)
         try:
-            files = list_text_files(folder)
+            files = list_text_files(text_directory(folder))
             if 0 <= index < len(files):
                 path = files[index]
                 stat = path.stat()
@@ -170,15 +177,17 @@ class PGFLoadTextFile:
 
     def load(self, folder, index):
         index = max(0, index)
-        files = list_text_files(folder)
+        directory = text_directory(folder)
+        files = list_text_files(directory)
+        folder_path = str(directory) if directory is not None else ""
         total = len(files)
         if total == 0:
-            return ("", "", index, 0)
+            return ("", "", index, 0, folder_path)
         if not 0 <= index < total:
             raise ValueError(f"Index {index} is out of range for {total} text files.")
 
         path = files[index]
-        return (path.read_text(encoding="utf-8-sig"), path.stem, index, total)
+        return (path.read_text(encoding="utf-8-sig"), path.stem, index, total, folder_path)
 
 
 class PGFLoadSingleTextFile:

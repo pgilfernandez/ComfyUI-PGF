@@ -64,29 +64,36 @@ app.registerExtension({
         function isJson(response) {
             return response.headers.get("content-type")?.includes("application/json");
         }
-        const row = document.createElement("div");
-        row.style.cssText = "display:flex;gap:4px;align-items:center;width:100%";
+        const emptyFolder = "Enter a folder path";
+        const noSelection = "Select a text file";
+        let fileLabels = [];
+        const files = node.addWidget("combo", "Text file", emptyFolder, (label) => {
+            const position = fileLabels.indexOf(label);
+            if (position < 0) return;
 
-        const select = document.createElement("select");
-        select.setAttribute("aria-label", "Text file");
-        select.style.cssText = "flex:1;min-width:0";
-        const refreshButton = document.createElement("button");
-        refreshButton.type = "button";
-        refreshButton.textContent = "Refresh";
-        refreshButton.title = "Refresh the text files in this folder";
-        row.append(select, refreshButton);
-        node.addDOMWidget("text_files", "pgf_text_files", row, {
-            serialize: false,
-            getMinHeight: () => 28,
-        });
+            index.value = position;
+            index.callback(position, app.canvas, node);
+            recordWidgetChange();
+        }, { values: [emptyFolder], serialize: false });
+        files.serialize = false;
+
+        const refreshButton = node.addWidget("button", "Refresh files", null, refresh, { serialize: false });
+        refreshButton.serialize = false;
 
         function showStatus(message) {
-            select.replaceChildren(new Option(message, ""));
-            select.disabled = true;
+            fileLabels = [];
+            files.options.values = [message];
+            files.value = message;
+            node.setDirtyCanvas(true, true);
         }
 
         function syncSelection() {
-            if (!select.disabled) select.value = String(index.value);
+            if (!fileLabels.length) return;
+
+            const label = fileLabels[index.value];
+            files.options.values = label === undefined ? [noSelection, ...fileLabels] : fileLabels;
+            files.value = label ?? noSelection;
+            node.setDirtyCanvas(true, true);
         }
 
         function recordWidgetChange() {
@@ -98,9 +105,9 @@ app.registerExtension({
         async function refresh() {
             const currentRequest = ++requestId;
             const path = folder.value.trim();
-            select.title = "";
+            delete files.options.tooltip;
             if (!path) {
-                showStatus("Enter a folder path");
+                showStatus(emptyFolder);
                 return;
             }
 
@@ -116,15 +123,12 @@ app.registerExtension({
                     showStatus("No .txt files");
                     return;
                 }
-                select.replaceChildren(...result.files.map((name, position) => (
-                    new Option(`${position}: ${name}`, String(position))
-                )));
-                select.disabled = false;
+                fileLabels = result.files.map((name, position) => `${position}: ${name}`);
                 syncSelection();
             } catch (error) {
                 if (currentRequest !== requestId) return;
                 showStatus("Could not list files");
-                select.title = error.message;
+                files.options.tooltip = error.message;
             }
         }
 
@@ -140,13 +144,6 @@ app.registerExtension({
             syncSelection();
             return result;
         };
-
-        select.addEventListener("change", () => {
-            index.value = Number(select.value);
-            index.callback(index.value, app.canvas, node);
-            recordWidgetChange();
-        });
-        refreshButton.addEventListener("click", refresh);
 
         const configure = node.onConfigure;
         node.onConfigure = function (...args) {

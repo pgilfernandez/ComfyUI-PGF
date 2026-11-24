@@ -196,9 +196,13 @@ class PGFImageSelector(IndexedSelector):
 
 
 class PGFDurationSelector(IndexedSelector):
-    RETURN_TYPES = ("FLOAT",)
-    RETURN_NAMES = ("duration",)
+    RETURN_TYPES = ("FLOAT", "INT")
+    RETURN_NAMES = ("duration", "duration_int")
     CATEGORY = f"{NODE_CATEGORY}/Video"
+
+    def select(self, index, **values):
+        (duration,) = super().select(index, **values)
+        return (duration, int(duration))
 
 
 NODE_CLASS_MAPPINGS = {

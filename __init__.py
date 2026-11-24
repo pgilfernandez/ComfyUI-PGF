@@ -4,6 +4,7 @@ import ipaddress
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from aiohttp import web
@@ -39,9 +40,10 @@ async def get_text_files(request):
     return web.json_response({"files": [path.name for path in files]})
 
 
-@PromptServer.instance.routes.post("/pgf/pick-{kind:folder|file}")
+@PromptServer.instance.routes.post("/pgf/pick-{kind:folder|file|read|save}")
 async def pick_path(request):
     kind = request.match_info["kind"]
+    path_key = "folder" if kind == "folder" else "file"
     try:
         remote = ipaddress.ip_address(request.remote)
         remote = getattr(remote, "ipv4_mapped", None) or remote
@@ -54,11 +56,13 @@ async def pick_path(request):
         return web.json_response({"error": "Expected a JSON request."}, status=415)
     try:
         body = await request.json()
-        initial_path = body[kind]
+        initial_path = body[path_key]
         if not isinstance(initial_path, str) or "\0" in initial_path:
             raise ValueError
+        if kind == "save" and not isinstance(body.get("text"), str):
+            raise ValueError
     except (KeyError, TypeError, ValueError):
-        return web.json_response({"error": "Invalid path."}, status=400)
+        return web.json_response({"error": "Invalid path or text."}, status=400)
 
     if picker_lock.locked():
         return web.json_response({"error": "A system picker is already open."}, status=409)
@@ -89,7 +93,32 @@ async def pick_path(request):
         except (OSError, ValueError, subprocess.SubprocessError):
             return web.json_response({"error": "Could not open the system picker."}, status=503)
 
-    return web.json_response({kind: path})
+        payload = {path_key: path}
+        if path and kind in ("read", "save"):
+            try:
+                file = PGFLoadSingleTextFile.text_path(path)
+                if kind == "read":
+                    payload["text"] = await asyncio.to_thread(file.read_text, encoding="utf-8-sig")
+                else:
+                    await asyncio.to_thread(save_text_file, file, body["text"])
+            except (OSError, ValueError, RuntimeError) as error:
+                return web.json_response({"error": str(error)}, status=400)
+
+    return web.json_response(payload)
+
+
+def save_text_file(path, text):
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", newline="", dir=path.parent, delete=False
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(text)
+        temporary_path.replace(path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 class PGFLoadTextFile:
@@ -162,6 +191,20 @@ class PGFLoadSingleTextFile:
         return (self.text_path(file).read_text(encoding="utf-8-sig"),)
 
 
+class PGFEditTextFile:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"text": ("STRING", {"default": "", "multiline": True})}}
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "edited_text"
+    CATEGORY = f"{NODE_CATEGORY}/Text"
+
+    def edited_text(self, text):
+        return (text,)
+
+
 class IndexedSelector:
     FUNCTION = "select"
 
@@ -214,6 +257,7 @@ class PGFDurationSelector(IndexedSelector):
 NODE_CLASS_MAPPINGS = {
     "PGFLoadTextFile": PGFLoadTextFile,
     "PGFLoadSingleTextFile": PGFLoadSingleTextFile,
+    "PGFEditTextFile": PGFEditTextFile,
     "PGFImageSelector": PGFImageSelector,
     "PGFBooleanSelector": PGFBooleanSelector,
     "PGFDurationSelector": PGFDurationSelector,
@@ -221,6 +265,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PGFLoadTextFile": "PGF - Load Text Files",
     "PGFLoadSingleTextFile": "PGF - Load Text File",
+    "PGFEditTextFile": "PGF - Edit Text File",
     "PGFImageSelector": "PGF - Image selector",
     "PGFBooleanSelector": "PGF - Boolean selector",
     "PGFDurationSelector": "PGF - Duration selector",

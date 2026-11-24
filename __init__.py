@@ -1,10 +1,16 @@
 import asyncio
+import base64
+import ipaddress
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 from aiohttp import web
 from server import PromptServer
 
 WEB_DIRECTORY = "./web"
+folder_picker_lock = asyncio.Lock()
 
 
 def list_text_files(folder):
@@ -29,6 +35,54 @@ async def get_text_files(request):
     except (OSError, ValueError, RuntimeError) as error:
         return web.json_response({"error": str(error)}, status=400)
     return web.json_response({"files": [path.name for path in files]})
+
+
+@PromptServer.instance.routes.post("/pgf/pick-folder")
+async def pick_folder(request):
+    try:
+        remote = ipaddress.ip_address(request.remote)
+        remote = getattr(remote, "ipv4_mapped", None) or remote
+    except ValueError:
+        return web.json_response({"error": "Folder picker requires a local connection."}, status=403)
+    if not remote.is_loopback:
+        return web.json_response({"error": "Folder picker requires a local connection."}, status=403)
+
+    if request.content_type != "application/json":
+        return web.json_response({"error": "Expected a JSON request."}, status=415)
+    try:
+        body = await request.json()
+        initial_folder = body["folder"]
+        if not isinstance(initial_folder, str) or "\0" in initial_folder:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        return web.json_response({"error": "Invalid folder path."}, status=400)
+
+    if folder_picker_lock.locked():
+        return web.json_response({"error": "A folder picker is already open."}, status=409)
+
+    async with folder_picker_lock:
+        try:
+            if sys.platform != "win32":
+                return web.json_response({"error": "The native folder picker requires Windows."}, status=501)
+
+            script = Path(__file__).with_name("_folder_picker.ps1")
+            encoded_script = base64.b64encode(script.read_text(encoding="utf-8").encode("utf-16-le")).decode("ascii")
+            env = {**os.environ, "PGF_FOLDER_PICKER_START": initial_folder.strip().strip('"')}
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["powershell.exe", "-NoProfile", "-STA", "-EncodedCommand", encoded_script],
+                capture_output=True,
+                encoding="utf-8",
+                check=True,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                env=env,
+                timeout=300,
+            )
+            folder = result.stdout or None
+        except (OSError, ValueError, subprocess.SubprocessError):
+            return web.json_response({"error": "Could not open the system folder picker."}, status=503)
+
+    return web.json_response({"folder": folder})
 
 
 class PGFLoadTextFile:

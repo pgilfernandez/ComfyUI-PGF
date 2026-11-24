@@ -8,6 +8,62 @@ app.registerExtension({
 
         const folder = node.widgets.find((widget) => widget.name === "folder");
         const index = node.widgets.find((widget) => widget.name === "index");
+        let pickingFolder = false;
+        const browseButton = node.addWidget("button", "Browse folder", null, async () => {
+            if (pickingFolder) return;
+            pickingFolder = true;
+            try {
+                const chosenFolder = await pickFolder(folder.value);
+                if (chosenFolder === null || !node.graph) return;
+
+                folder.value = chosenFolder;
+                folder.callback(folder.value, app.canvas, node);
+                recordWidgetChange();
+            } catch (error) {
+                app.extensionManager.toast.add({
+                    severity: "error",
+                    summary: "Could not browse folders",
+                    detail: error.message,
+                });
+            } finally {
+                pickingFolder = false;
+            }
+        }, { serialize: false });
+        browseButton.serialize = false;
+
+        async function pickFolder(currentFolder) {
+            const response = await api.fetchApi("/pgf/pick-folder", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ folder: currentFolder }),
+            });
+            if (response.status === 404 || response.status === 405) {
+                // The extension JavaScript can reload while the Python routes are still from an older session.
+                const query = new URLSearchParams({ path: currentFolder });
+                const fallback = await api.fetchApi(`/pixaroma/api/load_images_folder/pick_native?${query}`, {
+                    cache: "no-store",
+                });
+                if (!fallback.ok || !isJson(fallback)) {
+                    throw new Error("Restart the ComfyUI server to load the folder picker.");
+                }
+                const result = await fallback.json();
+                if (result.ok) return result.path;
+                if (result.cancelled) return null;
+                throw new Error(result.message ?? (result.busy
+                    ? "A folder picker is already open."
+                    : "Restart the ComfyUI server to load the PGF folder picker."));
+            }
+            if (!isJson(response)) {
+                throw new Error(`Folder picker returned HTTP ${response.status}. Restart the ComfyUI server and try again.`);
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error ?? response.statusText);
+            return result.folder;
+        }
+
+        function isJson(response) {
+            return response.headers.get("content-type")?.includes("application/json");
+        }
         const row = document.createElement("div");
         row.style.cssText = "display:flex;gap:4px;align-items:center;width:100%";
 
@@ -31,6 +87,11 @@ app.registerExtension({
 
         function syncSelection() {
             if (!select.disabled) select.value = String(index.value);
+        }
+
+        function recordWidgetChange() {
+            node.setDirtyCanvas(true, true);
+            app.extensionManager?.workflow?.activeWorkflow?.changeTracker?.captureCanvasState?.();
         }
 
         let requestId = 0;
@@ -83,7 +144,7 @@ app.registerExtension({
         select.addEventListener("change", () => {
             index.value = Number(select.value);
             index.callback(index.value, app.canvas, node);
-            node.setDirtyCanvas(true, true);
+            recordWidgetChange();
         });
         refreshButton.addEventListener("click", refresh);
 

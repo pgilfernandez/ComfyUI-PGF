@@ -11,6 +11,7 @@ from server import PromptServer
 
 WEB_DIRECTORY = "./web"
 picker_lock = asyncio.Lock()
+MAX_IMAGE_INPUTS = 100
 
 
 def list_text_files(folder):
@@ -158,11 +159,42 @@ class PGFLoadSingleTextFile:
         return (self.text_path(file).read_text(encoding="utf-8-sig"),)
 
 
+class PGFImageSelector:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "index": ("INT", {"default": 0, "min": 0, "max": MAX_IMAGE_INPUTS - 1}),
+            },
+            "optional": {
+                f"image_{index}": ("IMAGE", {"lazy": True})
+                for index in range(MAX_IMAGE_INPUTS)
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "select"
+    CATEGORY = "PGF/Image"
+
+    def check_lazy_status(self, index, **images):
+        name = f"image_{index}"
+        return [name] if name in images and images[name] is None else []
+
+    def select(self, index, **images):
+        image = images.get(f"image_{index}")
+        if image is None:
+            raise ValueError(f"Connect an image at index {index} or select a connected index.")
+        return (image,)
+
+
 NODE_CLASS_MAPPINGS = {
     "PGFLoadTextFile": PGFLoadTextFile,
     "PGFLoadSingleTextFile": PGFLoadSingleTextFile,
+    "PGFImageSelector": PGFImageSelector,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PGFLoadTextFile": "PGF - Load Text Files",
     "PGFLoadSingleTextFile": "PGF - Load Text File",
+    "PGFImageSelector": "PGF - Image selector",
 }

@@ -6,53 +6,127 @@ app.registerExtension({
     nodeCreated(node) {
         if (node.comfyClass !== "PGFEditTextFile") return;
 
-        const editor = node.widgets.find((widget) => widget.name === "text");
+        const getWidget = (name) => node.widgets.find((widget) => widget.name === name);
+        const getLink = (name) => node.inputs?.find((input) => input.name === name)?.link ?? null;
+        const editor = getWidget("editor");
+        const useEditor = getWidget("use_editor");
+        const fields = ["text", "path", "filename"];
+        let resolved = null;
         let busy = false;
 
-        async function chooseFile(kind) {
+        function setHidden(widget, hidden) {
+            widget.hidden = hidden;
+            widget.options.hidden = hidden;
+        }
+
+        function changed() {
+            node.setDirtyCanvas(true, true);
+            app.extensionManager?.workflow?.activeWorkflow?.changeTracker?.captureCanvasState?.();
+        }
+
+        setHidden(useEditor, true);
+        useEditor.computeSize = () => [0, -4];
+        const originalEdit = editor.callback;
+        editor.callback = function (...args) {
+            useEditor.value = true;
+            return originalEdit?.apply(this, args);
+        };
+        editor.inputEl?.addEventListener("input", () => { useEditor.value = true; });
+
+        async function request(route, body) {
+            const response = await api.fetchApi(route, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!response.headers.get("content-type")?.includes("application/json")) {
+                throw new Error(`ComfyUI returned HTTP ${response.status}.`);
+            }
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error ?? response.statusText);
+            return result;
+        }
+
+        async function runAction(action) {
             if (busy) return;
             busy = true;
-            const text = editor.value;
             try {
-                const body = { file: node.properties.file ?? "" };
-                if (kind === "save") body.text = text;
-                const response = await api.fetchApi(`/pgf/pick-${kind}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                });
-                if (!response.headers.get("content-type")?.includes("application/json")) {
-                    throw new Error(`ComfyUI returned HTTP ${response.status}.`);
-                }
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error ?? response.statusText);
-                if (result.file === null || !node.graph) return;
-
-                if (kind === "read") {
-                    if (editor.value !== text) throw new Error("The editor changed while the file was opening.");
-                    editor.value = result.text;
-                    editor.callback?.(result.text, app.canvas, node);
-                }
-                node.properties.file = result.file;
-                node.setDirtyCanvas(true, true);
-                app.extensionManager?.workflow?.activeWorkflow?.changeTracker?.captureCanvasState?.();
-                if (kind === "save") {
-                    app.extensionManager.toast.add({ severity: "success", summary: "Text saved", detail: result.file });
-                }
+                await action();
             } catch (error) {
                 app.extensionManager.toast.add({
-                    severity: "error",
-                    summary: kind === "save" ? "Could not save text" : "Could not open text",
-                    detail: error.message,
+                    severity: "error", summary: "PGF - Edit Text File", detail: error.message,
                 });
             } finally {
                 busy = false;
             }
         }
 
-        const open = node.addWidget("button", "Open .txt", null, () => chooseFile("read"), { serialize: false });
-        const save = node.addWidget("button", "Save .txt", null, () => chooseFile("save"), { serialize: false });
-        open.serialize = false;
+        function resolvedValue(name) {
+            const link = getLink(name);
+            const value = resolved?.[name];
+            if (link === null) return getWidget(name).value;
+            if (!value || value.link !== link || typeof value.text !== "string") {
+                throw new Error(`Run the workflow to load the connected ${name}.`);
+            }
+            return value.text;
+        }
+
+        const browse = node.addWidget("button", "Browse folder", null, () => runAction(async () => {
+            if (getLink("path") !== null) return;
+            const path = getWidget("path");
+            const result = await request("/pgf/pick-folder", { folder: path.value });
+            if (result.folder === null || !node.graph || getLink("path") !== null) return;
+            path.value = result.folder;
+            path.callback?.(path.value, app.canvas, node);
+            changed();
+        }), { serialize: false });
+        browse.serialize = false;
+        const browseSize = browse.computeSize;
+
+        const save = node.addWidget("button", "Save .txt", null, () => runAction(async () => {
+            if (getLink("text") !== null && !useEditor.value) resolvedValue("text");
+            const result = await request("/pgf/save-edited-text", {
+                path: resolvedValue("path"),
+                filename: resolvedValue("filename"),
+                text: editor.value,
+            });
+            app.extensionManager.toast.add({ severity: "success", summary: "Text saved", detail: result.file });
+        }), { serialize: false });
         save.serialize = false;
+
+        function updateBrowse() {
+            const hidden = getLink("path") !== null;
+            if (Boolean(browse.hidden) === hidden) return;
+            setHidden(browse, hidden);
+            browse.computeSize = hidden ? () => [0, -4] : browseSize;
+            node.setDirtyCanvas(true, true);
+        }
+
+        const onConnectionsChange = node.onConnectionsChange;
+        node.onConnectionsChange = function (...args) {
+            const result = onConnectionsChange?.apply(this, args);
+            queueMicrotask(updateBrowse);
+            return result;
+        };
+        const onConfigure = node.onConfigure;
+        node.onConfigure = function (...args) {
+            const result = onConfigure?.apply(this, args);
+            resolved = null;
+            queueMicrotask(updateBrowse);
+            return result;
+        };
+        const onExecuted = node.onExecuted;
+        node.onExecuted = function (message, ...args) {
+            const result = onExecuted?.call(this, message, ...args);
+            resolved = Object.fromEntries(fields.map((name) => [
+                name, { link: getLink(name), text: message[name]?.[0] },
+            ]));
+            if (!useEditor.value && typeof resolved.text.text === "string") {
+                editor.value = resolved.text.text;
+                changed();
+            }
+            return result;
+        };
+        updateBrowse();
     },
 });

@@ -40,29 +40,30 @@ async def get_text_files(request):
     return web.json_response({"files": [path.name for path in files]})
 
 
-@PromptServer.instance.routes.post("/pgf/pick-{kind:folder|file|read|save}")
-async def pick_path(request):
-    kind = request.match_info["kind"]
-    path_key = "folder" if kind == "folder" else "file"
+def is_local_request(request):
     try:
         remote = ipaddress.ip_address(request.remote)
         remote = getattr(remote, "ipv4_mapped", None) or remote
     except ValueError:
-        return web.json_response({"error": "The system picker requires a local connection."}, status=403)
-    if not remote.is_loopback:
+        return False
+    return remote.is_loopback
+
+
+@PromptServer.instance.routes.post("/pgf/pick-{kind:folder|file}")
+async def pick_path(request):
+    kind = request.match_info["kind"]
+    if not is_local_request(request):
         return web.json_response({"error": "The system picker requires a local connection."}, status=403)
 
     if request.content_type != "application/json":
         return web.json_response({"error": "Expected a JSON request."}, status=415)
     try:
         body = await request.json()
-        initial_path = body[path_key]
+        initial_path = body[kind]
         if not isinstance(initial_path, str) or "\0" in initial_path:
             raise ValueError
-        if kind == "save" and not isinstance(body.get("text"), str):
-            raise ValueError
     except (KeyError, TypeError, ValueError):
-        return web.json_response({"error": "Invalid path or text."}, status=400)
+        return web.json_response({"error": "Invalid path."}, status=400)
 
     if picker_lock.locked():
         return web.json_response({"error": "A system picker is already open."}, status=409)
@@ -93,18 +94,36 @@ async def pick_path(request):
         except (OSError, ValueError, subprocess.SubprocessError):
             return web.json_response({"error": "Could not open the system picker."}, status=503)
 
-        payload = {path_key: path}
-        if path and kind in ("read", "save"):
-            try:
-                file = PGFLoadSingleTextFile.text_path(path)
-                if kind == "read":
-                    payload["text"] = await asyncio.to_thread(file.read_text, encoding="utf-8-sig")
-                else:
-                    await asyncio.to_thread(save_text_file, file, body["text"])
-            except (OSError, ValueError, RuntimeError) as error:
-                return web.json_response({"error": str(error)}, status=400)
+    return web.json_response({kind: path})
 
-    return web.json_response(payload)
+
+@PromptServer.instance.routes.post("/pgf/save-edited-text")
+async def save_edited_text(request):
+    if not is_local_request(request):
+        return web.json_response({"error": "Saving requires a local connection."}, status=403)
+    if request.content_type != "application/json":
+        return web.json_response({"error": "Expected a JSON request."}, status=415)
+
+    try:
+        body = await request.json()
+        path, filename, text = (body[key] for key in ("path", "filename", "text"))
+        if not all(isinstance(value, str) for value in (path, filename, text)):
+            raise ValueError("Expected a folder, filename and text.")
+        directory = Path(path.strip().strip('"')).expanduser()
+        if not directory.is_absolute():
+            raise ValueError("Enter the absolute path of a folder.")
+        filename = filename.strip()
+        if filename.lower().endswith(".txt"):
+            filename = filename[:-4]
+        if not filename or filename.endswith((".", " ")) or any(
+            char in '<>:"/\\|?*' or ord(char) < 32 for char in filename
+        ):
+            raise ValueError("Enter a valid filename without a directory.")
+        destination = directory / f"{filename}.txt"
+        await asyncio.to_thread(save_text_file, destination, text)
+    except (KeyError, TypeError, ValueError, OSError, RuntimeError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    return web.json_response({"file": str(destination)})
 
 
 def save_text_file(path, text):
@@ -194,15 +213,25 @@ class PGFLoadSingleTextFile:
 class PGFEditTextFile:
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"text": ("STRING", {"default": "", "multiline": True})}}
+        return {
+            "required": {
+                "editor": ("STRING", {"default": "", "multiline": True}),
+                "path": ("STRING", {"default": "", "tooltip": "Absolute folder path"}),
+                "filename": ("STRING", {"default": "", "tooltip": "Filename without .txt"}),
+                "use_editor": ("BOOLEAN", {"default": False}),
+            },
+            "optional": {"text": ("STRING", {"forceInput": True})},
+        }
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
     FUNCTION = "edited_text"
+    OUTPUT_NODE = True
     CATEGORY = f"{NODE_CATEGORY}/Text"
 
-    def edited_text(self, text):
-        return (text,)
+    def edited_text(self, editor, path, filename, use_editor, text=None):
+        result = editor if use_editor or text is None else text
+        return {"ui": {"path": [path], "filename": [filename], "text": [result]}, "result": (result,)}
 
 
 class IndexedSelector:

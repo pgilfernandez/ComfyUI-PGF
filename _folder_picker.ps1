@@ -11,20 +11,12 @@ $owner.Opacity = 0
 $owner.StartPosition = 'CenterScreen'
 
 $start = $env:PGF_FOLDER_PICKER_START
-$save = $env:PGF_PICKER_KIND -eq 'save'
-$pickFile = $env:PGF_PICKER_KIND -in @('file', 'read', 'save')
+$pickFile = $env:PGF_PICKER_KIND -eq 'file'
 if ($pickFile) {
-    if ($save) {
-        $picker = New-Object System.Windows.Forms.SaveFileDialog
-        $picker.Title = 'Save text file'
-        $picker.OverwritePrompt = $true
-        $picker.DefaultExt = 'txt'
-    } else {
-        $picker = New-Object System.Windows.Forms.OpenFileDialog
-        $picker.Title = 'Open text file'
-        $picker.CheckFileExists = $true
-    }
+    $picker = New-Object System.Windows.Forms.OpenFileDialog
+    $picker.Title = 'Choose a text file for PGF - Load Text File'
     $picker.Filter = 'Text files (*.txt)|*.txt'
+    $picker.CheckFileExists = $true
     if ($start -and [IO.File]::Exists($start)) {
         $picker.InitialDirectory = [IO.Path]::GetDirectoryName($start)
         $picker.FileName = [IO.Path]::GetFileName($start)

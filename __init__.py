@@ -12,7 +12,7 @@ from server import PromptServer
 WEB_DIRECTORY = "./web"
 NODE_CATEGORY = "🐬 PGF"
 picker_lock = asyncio.Lock()
-MAX_IMAGE_INPUTS = 100
+MAX_SELECTOR_INPUTS = 100
 
 
 def list_text_files(folder):
@@ -162,42 +162,54 @@ class PGFLoadSingleTextFile:
         return (self.text_path(file).read_text(encoding="utf-8-sig"),)
 
 
-class PGFImageSelector:
+class IndexedSelector:
+    FUNCTION = "select"
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "index": ("INT", {"default": 0, "min": 0, "max": MAX_IMAGE_INPUTS - 1}),
+                "index": ("INT", {"default": 0, "min": 0, "max": MAX_SELECTOR_INPUTS - 1}),
             },
             "optional": {
-                f"image_{index}": ("IMAGE", {"lazy": True})
-                for index in range(MAX_IMAGE_INPUTS)
+                f"{cls.RETURN_NAMES[0]}_{index}": (cls.RETURN_TYPES[0], {"lazy": True, "forceInput": True})
+                for index in range(MAX_SELECTOR_INPUTS)
             },
         }
 
+    def check_lazy_status(self, index, **values):
+        name = f"{self.RETURN_NAMES[0]}_{index}"
+        return [name] if name in values and values[name] is None else []
+
+    def select(self, index, **values):
+        name = self.RETURN_NAMES[0]
+        value = values.get(f"{name}_{index}")
+        if value is None:
+            raise ValueError(f"Connect a value to {name}_{index} or select a connected index.")
+        return (value,)
+
+
+class PGFImageSelector(IndexedSelector):
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
-    FUNCTION = "select"
     CATEGORY = f"{NODE_CATEGORY}/Image"
 
-    def check_lazy_status(self, index, **images):
-        name = f"image_{index}"
-        return [name] if name in images and images[name] is None else []
 
-    def select(self, index, **images):
-        image = images.get(f"image_{index}")
-        if image is None:
-            raise ValueError(f"Connect an image at index {index} or select a connected index.")
-        return (image,)
+class PGFDurationSelector(IndexedSelector):
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("duration",)
+    CATEGORY = f"{NODE_CATEGORY}/Video"
 
 
 NODE_CLASS_MAPPINGS = {
     "PGFLoadTextFile": PGFLoadTextFile,
     "PGFLoadSingleTextFile": PGFLoadSingleTextFile,
     "PGFImageSelector": PGFImageSelector,
+    "PGFDurationSelector": PGFDurationSelector,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PGFLoadTextFile": "PGF - Load Text Files",
     "PGFLoadSingleTextFile": "PGF - Load Text File",
     "PGFImageSelector": "PGF - Image selector",
+    "PGFDurationSelector": "PGF - Duration selector",
 }

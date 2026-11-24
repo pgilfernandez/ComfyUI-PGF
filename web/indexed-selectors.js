@@ -1,35 +1,42 @@
 import { app } from "../../scripts/app.js";
 
-const isImageInput = (input) => /^image_\d+$/.test(input.name);
+const selectorInputs = {
+    PGFImageSelector: { prefix: "image", type: "IMAGE" },
+    PGFDurationSelector: { prefix: "duration", type: "FLOAT" },
+};
 
 app.registerExtension({
-    name: "PGF.ImageSelector",
+    name: "PGF.IndexedSelectors",
     nodeCreated(node) {
-        if (node.comfyClass !== "PGFImageSelector") return;
+        const definition = selectorInputs[node.comfyClass];
+        if (!definition) return;
 
+        const { prefix, type } = definition;
+        const numberedName = new RegExp(`^${prefix}_\\d+$`);
+        const isSelectorInput = (input) => numberedName.test(input.name);
         const indexWidget = node.widgets.find((widget) => widget.name === "index");
         const maxInputs = indexWidget.options.max + 1;
 
         function updateInputs() {
             const inputs = node.inputs ?? [];
-            const imageInputs = inputs.filter(isImageInput);
-            const connected = imageInputs.filter((input) => input.link != null);
-            const tail = imageInputs.at(-1);
+            const selectorSlots = inputs.filter(isSelectorInput);
+            const connected = selectorSlots.filter((input) => input.link != null);
+            const tail = selectorSlots.at(-1);
             const spare = tail?.link === null ? tail : null;
             const kept = new Set(spare ? [...connected, spare] : connected);
 
             let changed = false;
             for (let slot = inputs.length - 1; slot >= 0; slot--) {
                 const input = inputs[slot];
-                if (isImageInput(input) && !kept.has(input)) {
+                if (isSelectorInput(input) && !kept.has(input)) {
                     node.removeInput(slot);
                     changed = true;
                 }
             }
             const orderedInputs = spare ? [...connected, spare] : connected;
             orderedInputs.forEach((input, position) => {
-                const name = `image_${position}`;
-                const hasNumberedLabel = /^image_\d+$/.test(input.label);
+                const name = `${prefix}_${position}`;
+                const hasNumberedLabel = numberedName.test(input.label);
                 if (input.name !== name || input.localized_name !== name
                     || (hasNumberedLabel && input.label !== name)) {
                     input.name = name;
@@ -39,8 +46,8 @@ app.registerExtension({
                 }
             });
             if (!spare && connected.length < maxInputs) {
-                const name = `image_${connected.length}`;
-                node.addInput(name, "IMAGE", { localized_name: name });
+                const name = `${prefix}_${connected.length}`;
+                node.addInput(name, type, { localized_name: name });
                 changed = true;
             }
             if (changed) {

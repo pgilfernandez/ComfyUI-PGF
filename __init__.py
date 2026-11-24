@@ -1,0 +1,74 @@
+import asyncio
+from pathlib import Path
+
+from aiohttp import web
+from server import PromptServer
+
+WEB_DIRECTORY = "./web"
+
+
+def list_text_files(folder):
+    if not folder.strip():
+        return []
+
+    directory = Path(folder.strip().strip('"')).expanduser()
+    if not directory.is_absolute():
+        raise ValueError("Enter an absolute folder path.")
+
+    return sorted(
+        (path for path in directory.iterdir()
+         if path.suffix.lower() == ".txt" and path.is_file()),
+        key=lambda path: (path.name.casefold(), path.name),
+    )
+
+
+@PromptServer.instance.routes.get("/pgf/text-files")
+async def get_text_files(request):
+    try:
+        files = await asyncio.to_thread(list_text_files, request.query.get("folder", ""))
+    except (OSError, ValueError, RuntimeError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    return web.json_response({"files": [path.name for path in files]})
+
+
+class PGFLoadTextFile:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "folder": ("STRING", {"default": "", "tooltip": "Absolute folder path"}),
+                "index": ("INT", {"default": 0, "min": 0, "max": 2147483647}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING", "STRING", "INT", "INT")
+    RETURN_NAMES = ("text", "file_name", "index", "total")
+    FUNCTION = "load"
+    CATEGORY = "PGF/Text"
+
+    @classmethod
+    def IS_CHANGED(cls, folder, index):
+        try:
+            files = list_text_files(folder)
+            if 0 <= index < len(files):
+                path = files[index]
+                stat = path.stat()
+                return (str(path), stat.st_mtime_ns, stat.st_size, len(files))
+        except (OSError, ValueError, RuntimeError):
+            pass
+        return float("nan")
+
+    def load(self, folder, index):
+        files = list_text_files(folder)
+        total = len(files)
+        if total == 0:
+            return ("", "", index, 0)
+        if not 0 <= index < total:
+            raise ValueError(f"Index {index} is out of range for {total} text files.")
+
+        path = files[index]
+        return (path.read_text(encoding="utf-8-sig"), path.stem, index, total)
+
+
+NODE_CLASS_MAPPINGS = {"PGFLoadTextFile": PGFLoadTextFile}
+NODE_DISPLAY_NAME_MAPPINGS = {"PGFLoadTextFile": "PGF - Load Text Files"}

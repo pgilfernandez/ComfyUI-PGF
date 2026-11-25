@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import hashlib
 import ipaddress
 import os
 import subprocess
@@ -119,14 +120,18 @@ async def save_edited_text(request):
         directory = Path(path.strip().strip('"')).expanduser()
         if not directory.is_absolute() or not directory.is_dir():
             raise ValueError("Enter the absolute path of an existing folder.")
-        filename = filename.strip()
-        if filename.lower().endswith(".txt"):
+        existing_file = body.get("existing_file") is True
+        if not existing_file:
+            filename = filename.strip()
+        if not existing_file and filename.lower().endswith(".txt"):
             raise ValueError("Enter the filename without the .txt extension.")
-        if not filename or filename.endswith((".", " ")) or any(
+        if not filename or (not existing_file and filename.endswith((".", " "))) or any(
             char in '<>:"/\\|?*' or ord(char) < 32 for char in filename
         ):
             raise ValueError("Enter a valid filename without a directory.")
         destination = directory / f"{filename}.txt"
+        if existing_file and not destination.is_file():
+            raise ValueError("The selected text file no longer exists.")
         await asyncio.to_thread(save_text_file, destination, text)
     except (KeyError, TypeError, ValueError, OSError, RuntimeError) as error:
         return web.json_response({"error": str(error)}, status=400)
@@ -255,6 +260,39 @@ class PGFEditTextFile:
         }
 
 
+class PGFLoadAndEditTextFiles(PGFLoadTextFile):
+    @classmethod
+    def INPUT_TYPES(cls):
+        inputs = super().INPUT_TYPES()
+        inputs["required"].update({
+            "editor": ("STRING", {"default": "", "multiline": True}),
+            "editor_source": ("STRING", {"default": ""}),
+        })
+        return inputs
+
+    OUTPUT_NODE = True
+
+    @classmethod
+    def IS_CHANGED(cls, folder, index, editor, editor_source):
+        return super().IS_CHANGED(folder, index)
+
+    def load(self, folder, index, editor, editor_source):
+        text, filename, selected_index, total, path = super().load(folder, index)
+        source = ""
+        if total:
+            source = hashlib.sha256(f"{path}\0{filename}\0{text}".encode("utf-8")).hexdigest()
+            if editor_source == source:
+                text = editor
+        return {
+            "ui": {
+                "text": [text], "filename": [filename], "path": [path], "index": [selected_index],
+                "editor_source": [source], "editor_at_run": [editor],
+                "folder_at_run": [folder],
+            },
+            "result": (text, filename, selected_index, total, path),
+        }
+
+
 class IndexedSelector:
     FUNCTION = "select"
 
@@ -308,6 +346,7 @@ NODE_CLASS_MAPPINGS = {
     "PGFLoadTextFile": PGFLoadTextFile,
     "PGFLoadSingleTextFile": PGFLoadSingleTextFile,
     "PGFEditTextFile": PGFEditTextFile,
+    "PGFLoadAndEditTextFiles": PGFLoadAndEditTextFiles,
     "PGFImageSelector": PGFImageSelector,
     "PGFBooleanSelector": PGFBooleanSelector,
     "PGFDurationSelector": PGFDurationSelector,
@@ -316,6 +355,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PGFLoadTextFile": "PGF - Load Text Files",
     "PGFLoadSingleTextFile": "PGF - Load Text File",
     "PGFEditTextFile": "PGF - Edit Text File",
+    "PGFLoadAndEditTextFiles": "PGF - Load and edit text files",
     "PGFImageSelector": "PGF - Image selector",
     "PGFBooleanSelector": "PGF - Boolean selector",
     "PGFDurationSelector": "PGF - Duration selector",

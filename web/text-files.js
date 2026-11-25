@@ -1,5 +1,6 @@
 import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
+import { addFolderEditor } from "./folder-editor.js";
 
 function addFilePicker(node) {
     const file = node.widgets.find((widget) => widget.name === "file");
@@ -44,7 +45,8 @@ app.registerExtension({
             addFilePicker(node);
             return;
         }
-        if (node.comfyClass !== "PGFLoadTextFile") return;
+        const hasEditor = node.comfyClass === "PGFLoadAndEditTextFiles";
+        if (node.comfyClass !== "PGFLoadTextFile" && !hasEditor) return;
 
         const folder = node.widgets.find((widget) => widget.name === "folder");
         const index = node.widgets.find((widget) => widget.name === "index");
@@ -194,6 +196,7 @@ app.registerExtension({
             void refresh();
             return result;
         };
+        if (hasEditor) addFolderEditor(node, folder, index, recordWidgetChange);
         void refresh();
     },
 });

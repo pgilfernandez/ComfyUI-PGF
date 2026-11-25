@@ -1,6 +1,7 @@
 import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { addFolderEditor } from "./folder-editor.js";
+import { addFileRows } from "./file-rows.js";
 
 function addFilePicker(node) {
     const file = node.widgets.find((widget) => widget.name === "file");
@@ -52,7 +53,7 @@ app.registerExtension({
         const index = node.widgets.find((widget) => widget.name === "index");
         index.options.min = 0;
         let pickingFolder = false;
-        const browseButton = node.addWidget("button", "Browse folder", null, async () => {
+        async function browseFolder() {
             if (pickingFolder) return;
             pickingFolder = true;
             try {
@@ -71,8 +72,7 @@ app.registerExtension({
             } finally {
                 pickingFolder = false;
             }
-        }, { serialize: false });
-        browseButton.serialize = false;
+        }
 
         async function pickFolder(currentFolder) {
             const response = await api.fetchApi("/pgf/pick-folder", {
@@ -111,23 +111,45 @@ app.registerExtension({
         const noSelection = "Select a text file";
         let fileLabels = [];
         let loadEditor;
-        const files = node.addWidget("combo", "Text file", emptyFolder, (label) => {
+        function selectFile(label) {
             const position = fileLabels.indexOf(label);
             if (position < 0) return;
 
             index.value = position;
             index.callback(position, app.canvas, node);
             recordWidgetChange();
-        }, { values: [emptyFolder], serialize: false });
-        files.serialize = false;
+        }
 
-        const refreshButton = node.addWidget("button", "Refresh files", null, refresh, { serialize: false });
-        refreshButton.serialize = false;
+        let files = { options: { values: [emptyFolder] }, value: emptyFolder };
+        let syncRows = () => {};
+        if (hasEditor) {
+            const rows = addFileRows(node, {
+                browseFolder, refresh, selectFile,
+                editFolder(value) {
+                    if (folder.value === value) return;
+                    folder.value = value;
+                    folder.callback(value, app.canvas, node);
+                    recordWidgetChange();
+                },
+            });
+            folder.hidden = true;
+            folder.options.hidden = true;
+            folder.computeSize = () => [0, -4];
+            node.widgets.splice(node.widgets.indexOf(rows.widget), 1);
+            node.widgets.splice(node.widgets.indexOf(folder) + 1, 0, rows.widget);
+            syncRows = () => rows.update(folder.value, files.options.values, files.value, fileLabels.length > 0, files.options.tooltip);
+        } else {
+            const browse = node.addWidget("button", "Browse folder", null, browseFolder, { serialize: false });
+            files = node.addWidget("combo", "Text file", emptyFolder, selectFile, { values: [emptyFolder], serialize: false });
+            const refreshButton = node.addWidget("button", "Refresh files", null, refresh, { serialize: false });
+            browse.serialize = files.serialize = refreshButton.serialize = false;
+        }
 
         function showStatus(message) {
             fileLabels = [];
             files.options.values = [message];
             files.value = message;
+            syncRows();
             node.setDirtyCanvas(true, true);
         }
 
@@ -138,6 +160,7 @@ app.registerExtension({
             const label = fileLabels[index.value];
             files.options.values = label === undefined ? [noSelection, ...fileLabels] : fileLabels;
             files.value = label ?? noSelection;
+            syncRows();
             node.setDirtyCanvas(true, true);
         }
 
@@ -173,8 +196,8 @@ app.registerExtension({
                 void loadEditor?.();
             } catch (error) {
                 if (currentRequest !== requestId) return;
-                showStatus("Could not list files");
                 files.options.tooltip = error.message;
+                showStatus("Could not list files");
             }
         }
 
@@ -200,11 +223,6 @@ app.registerExtension({
             return result;
         };
         if (hasEditor) {
-            const ordered = [index, ...node.widgets.filter((widget) => (
-                widget.name === "editor" || widget.name === "editor_source"
-            ))];
-            for (const widget of ordered) node.widgets.splice(node.widgets.indexOf(widget), 1);
-            node.widgets.splice(node.widgets.indexOf(refreshButton) + 1, 0, ...ordered);
             loadEditor = addFolderEditor(node, folder, index, recordWidgetChange);
         }
         void refresh();

@@ -105,6 +105,23 @@ async def pick_path(request):
     return web.json_response({kind: path})
 
 
+@PromptServer.instance.routes.post("/pgf/load-editable-text")
+async def load_editable_text(request):
+    if not is_local_request(request):
+        return web.json_response({"error": "Loading requires a local connection."}, status=403)
+    if request.content_type != "application/json":
+        return web.json_response({"error": "Expected a JSON request."}, status=415)
+    try:
+        body = await request.json()
+        folder, index = body["folder"], body["index"]
+        if not isinstance(folder, str) or type(index) is not int:
+            raise ValueError("Expected a folder and an integer index.")
+        result = await asyncio.to_thread(PGFLoadAndEditTextFiles().load, folder, index, "", "")
+    except (KeyError, TypeError, ValueError, OSError, RuntimeError) as error:
+        return web.json_response({"error": str(error)}, status=400)
+    return web.json_response({key: values[0] for key, values in result["ui"].items()})
+
+
 @PromptServer.instance.routes.post("/pgf/save-edited-text")
 async def save_edited_text(request):
     if not is_local_request(request):

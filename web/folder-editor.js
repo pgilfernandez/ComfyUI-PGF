@@ -8,6 +8,7 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
     const toast = (severity, summary, detail) => app.extensionManager.toast.add({ severity, summary, detail });
     let loaded = null;
     let saving = false;
+    let loadRequest = 0;
 
     function setHidden(widget, hidden, originalSize) {
         widget.hidden = hidden;
@@ -15,13 +16,6 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
         widget.computeSize = hidden ? () => [0, -4] : originalSize;
     }
     setHidden(source, true);
-
-    const toggle = node.addWidget("button", "Show / hide editor", null, () => {
-        node.properties.pgfEditorHidden = !node.properties.pgfEditorHidden;
-        updateVisibility();
-        recordWidgetChange();
-    }, { serialize: false });
-    toggle.serialize = false;
 
     const getLink = (name) => node.inputs?.find((input) => input.name === name)?.link ?? null;
 
@@ -62,18 +56,66 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
     save.serialize = false;
     const saveSize = save.computeSize;
 
+    const toggle = node.addWidget("button", "Show / hide editor", null, () => {
+        node.properties.pgfEditorHidden = node.properties.pgfEditorHidden === false;
+        updateVisibility();
+        recordWidgetChange();
+        void loadSelection();
+    }, { serialize: false });
+    toggle.serialize = false;
+
+    const editorHidden = () => node.properties.pgfEditorHidden !== false;
+
     function updateVisibility() {
-        const hidden = Boolean(node.properties.pgfEditorHidden);
+        const hidden = editorHidden();
         setHidden(editor, hidden, editorSize);
         setHidden(save, hidden, saveSize);
         const [width, height] = node.computeSize();
         node.setSize([Math.max(node.size[0], width), height]);
     }
 
+    async function loadSelection() {
+        const requestId = ++loadRequest;
+        if (editorHidden() || !folder.value.trim() || getLink("folder") !== null || getLink("index") !== null) return;
+
+        const selectedFolder = folder.value;
+        const selectedIndex = Math.max(0, index.value);
+        const editorBeforeLoad = editor.value;
+        const isCurrent = () => requestId === loadRequest && !editorHidden() && node.graph
+            && folder.value === selectedFolder && Math.max(0, index.value) === selectedIndex
+            && getLink("folder") === null && getLink("index") === null;
+        try {
+            const response = await api.fetchApi("/pgf/load-editable-text", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ folder: selectedFolder, index: selectedIndex }),
+            });
+            const result = await response.json();
+            if (!isCurrent()) return;
+            if (!response.ok) throw new Error(result.error ?? response.statusText);
+            applyLoaded({
+                source: result.editor_source, path: result.path, filename: result.filename,
+                index: result.index, folder: result.folder_at_run, folderLink: null, indexLink: null,
+            }, result.text, editorBeforeLoad);
+        } catch (error) {
+            if (isCurrent()) toast("error", "Could not load text", error.message);
+        }
+    }
+
+    function applyLoaded(selected, text, editorBeforeLoad) {
+        loaded = selected.source ? selected : null;
+        if (loaded && selectionMatches(loaded) && source.value !== loaded.source && editor.value === editorBeforeLoad) {
+            editor.value = text;
+            source.value = loaded.source;
+            recordWidgetChange();
+        }
+    }
+
     const onConfigure = node.onConfigure;
     node.onConfigure = function (...args) {
         const result = onConfigure?.apply(this, args);
         loaded = null;
+        loadRequest++;
         updateVisibility();
         return result;
     };
@@ -89,14 +131,9 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
             folderLink: getLink("folder"),
             indexLink: getLink("index"),
         };
-        loaded = selected.source ? selected : null;
-        if (loaded && selectionMatches(loaded) && source.value !== loaded.source
-            && editor.value === message.editor_at_run?.[0]) {
-            editor.value = message.text[0];
-            source.value = loaded.source;
-            recordWidgetChange();
-        }
+        applyLoaded(selected, message.text?.[0], message.editor_at_run?.[0]);
         return result;
     };
     updateVisibility();
+    return loadSelection;
 }

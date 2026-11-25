@@ -110,6 +110,7 @@ app.registerExtension({
         const emptyFolder = "Enter a folder path";
         const noSelection = "Select a text file";
         let fileLabels = [];
+        let loadEditor;
         const files = node.addWidget("combo", "Text file", emptyFolder, (label) => {
             const position = fileLabels.indexOf(label);
             if (position < 0) return;
@@ -169,6 +170,7 @@ app.registerExtension({
                 }
                 fileLabels = result.files.map((name, position) => `${position}: ${name}`);
                 syncSelection();
+                void loadEditor?.();
             } catch (error) {
                 if (currentRequest !== requestId) return;
                 showStatus("Could not list files");
@@ -186,6 +188,7 @@ app.registerExtension({
         index.callback = function (...args) {
             const result = updateIndex?.apply(this, args);
             syncSelection();
+            void loadEditor?.();
             return result;
         };
 
@@ -196,7 +199,14 @@ app.registerExtension({
             void refresh();
             return result;
         };
-        if (hasEditor) addFolderEditor(node, folder, index, recordWidgetChange);
+        if (hasEditor) {
+            const ordered = [index, ...node.widgets.filter((widget) => (
+                widget.name === "editor" || widget.name === "editor_source"
+            ))];
+            for (const widget of ordered) node.widgets.splice(node.widgets.indexOf(widget), 1);
+            node.widgets.splice(node.widgets.indexOf(refreshButton) + 1, 0, ...ordered);
+            loadEditor = addFolderEditor(node, folder, index, recordWidgetChange);
+        }
         void refresh();
     },
 });

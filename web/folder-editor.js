@@ -56,22 +56,27 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
     save.serialize = false;
     const saveSize = save.computeSize;
 
-    const toggle = node.addWidget("button", "Show / hide editor", null, () => {
+    const toggle = node.addWidget("button", "show editor", null, () => {
         node.properties.pgfEditorHidden = node.properties.pgfEditorHidden === false;
         updateVisibility();
         recordWidgetChange();
         void loadSelection();
     }, { serialize: false });
     toggle.serialize = false;
+    node.widgets.splice(node.widgets.indexOf(toggle), 1);
+    node.widgets.splice(node.widgets.indexOf(index) + 1, 0, toggle);
 
     const editorHidden = () => node.properties.pgfEditorHidden !== false;
 
-    function updateVisibility() {
+    function updateVisibility(resize = true) {
         const hidden = editorHidden();
+        toggle.label = hidden ? "show editor" : "hide editor";
         setHidden(editor, hidden, editorSize);
         setHidden(save, hidden, saveSize);
-        const [width, height] = node.computeSize();
-        node.setSize([Math.max(node.size[0], width), height]);
+        if (resize) {
+            const [width, height] = node.computeSize();
+            node.setSize([Math.max(node.size[0], width), height]);
+        }
     }
 
     async function loadSelection() {
@@ -116,7 +121,7 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
         const result = onConfigure?.apply(this, args);
         loaded = null;
         loadRequest++;
-        updateVisibility();
+        updateVisibility(false);
         return result;
     };
     const onExecuted = node.onExecuted;

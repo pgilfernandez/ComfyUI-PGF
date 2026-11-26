@@ -51,10 +51,11 @@ export function addFileRows(node, actions) {
     addRow("text file", files, "refresh", "Refresh files", actions.refresh);
     const widget = node.addDOMWidget("file_rows", "pgf_file_rows", root, {
         serialize: false,
-        getMinHeight: () => 58,
-        getMaxHeight: () => 58,
     });
     widget.serialize = false;
+    // Nodes 2.0 treats widgets with computeLayoutSize as vertically expandable.
+    widget.computeLayoutSize = undefined;
+    widget.computeSize = (width) => [width, 60];
 
     return {
         widget,

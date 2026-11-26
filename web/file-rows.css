@@ -1,31 +1,40 @@
 .pgf-file-rows {
     display: grid;
-    gap: 5px;
+    grid-template-rows: repeat(2, 28px);
+    align-content: start;
+    gap: 4px;
     width: 100%;
-    color: var(--input-text, inherit);
-    font: 12px system-ui, sans-serif;
+    height: 60px;
+    color: var(--node-foreground, var(--input-text, inherit));
+    font: inherit;
+    font-size: 12px;
 }
 
 .pgf-file-row {
     display: grid;
-    grid-template-columns: 48px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 80px) minmax(0, 1fr);
     align-items: center;
     gap: 6px;
 }
 
 .pgf-file-group {
     display: flex;
-    height: 25px;
+    height: 28px;
     min-width: 0;
     box-sizing: border-box;
-    border: 1px solid var(--border-color, #666);
-    border-radius: 7px;
-    background: var(--comfy-input-bg, var(--comfy-menu-bg, #252525));
+    border-radius: var(--radius-md, 6px);
+    background: var(--input, var(--comfy-input-bg, #252525));
+    color: var(--foreground, var(--input-text, inherit));
     overflow: hidden;
 }
 
 .pgf-file-group:focus-within {
-    border-color: var(--input-text, #aaa);
+    outline: 1px solid var(--ring, var(--input-text, #aaa));
+    outline-offset: -1px;
+}
+
+.pgf-file-group:hover {
+    background: var(--muted, var(--comfy-input-bg, #333));
 }
 
 .pgf-file-group > input,
@@ -41,26 +50,28 @@
 .pgf-file-group > select {
     flex: 1;
     min-width: 0;
-    padding: 0 6px;
+    padding: 0 8px;
     outline: none;
 }
 
 .pgf-file-group option {
-    background: var(--comfy-input-bg, var(--comfy-menu-bg, #252525));
+    background: var(--popover, var(--comfy-menu-bg, #252525));
+    color: var(--popover-foreground, var(--input-text, inherit));
 }
 
 .pgf-file-group > button {
     display: grid;
-    flex: 0 0 27px;
+    flex: 0 0 28px;
     place-items: center;
     padding: 0;
-    border-inline-start: 1px solid var(--border-color, #666);
+    color: var(--muted-foreground, var(--input-text, inherit));
     cursor: pointer;
 }
 
 .pgf-file-group > button:hover,
 .pgf-file-group > button:focus-visible {
-    background: var(--comfy-menu-bg, #444);
+    background: var(--accent, var(--comfy-menu-bg, #444));
+    color: var(--foreground, var(--input-text, inherit));
 }
 
 .pgf-file-group svg {

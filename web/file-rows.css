@@ -51,6 +51,11 @@
 .pgf-file-group > select {
     appearance: none;
     padding-inline-end: 24px;
+    cursor: pointer;
+}
+
+.pgf-file-group > select:disabled {
+    cursor: default;
 }
 
 .pgf-file-group:has(> select)::after {
@@ -69,6 +74,76 @@
 .pgf-file-group option {
     background: var(--popover, var(--comfy-menu-bg, #252525));
     color: var(--popover-foreground, var(--input-text, inherit));
+}
+
+@supports (appearance: base-select) and selector(::picker(select)) {
+    .pgf-file-group > select,
+    .pgf-file-group > select::picker(select) {
+        appearance: base-select;
+    }
+
+    .pgf-file-group > select {
+        align-items: center;
+        gap: 8px;
+        padding-inline-end: 8px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .pgf-file-group:has(> select)::after {
+        content: none;
+    }
+
+    .pgf-file-group > select::picker-icon {
+        flex: none;
+        align-self: center;
+        width: 6px;
+        height: 6px;
+        margin-inline-start: auto;
+        border: solid var(--muted-foreground, #aaa);
+        border-width: 0 1.5px 1.5px 0;
+        transform: translateY(-2px) rotate(45deg);
+        content: "";
+    }
+
+    .pgf-file-group > select::picker(select) {
+        max-height: 260px;
+        margin-block: 4px;
+        padding: 4px;
+        border: 1px solid var(--node-border, var(--border-color, #666));
+        border-radius: var(--radius-md, 6px);
+        background: var(--popover, var(--comfy-menu-bg, #252525));
+        color: var(--popover-foreground, var(--foreground, #eee));
+        box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
+        font: 12px / 1.4 system-ui, sans-serif;
+        overflow: auto;
+        scrollbar-color: var(--muted-foreground, #888) transparent;
+        scrollbar-width: thin;
+    }
+
+    .pgf-file-group option {
+        min-height: 28px;
+        padding: 5px 8px;
+        border-radius: var(--radius-sm, 4px);
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+    }
+
+    .pgf-file-group option:checked {
+        background: var(--muted, #353535);
+    }
+
+    .pgf-file-group option:is(:hover, :focus-visible) {
+        background: var(--accent, #404040);
+        outline: none;
+    }
+
+    .pgf-file-group option::checkmark {
+        order: 1;
+        margin-inline-start: auto;
+        color: var(--muted-foreground, #aaa);
+    }
 }
 
 .pgf-file-group > button {

@@ -131,9 +131,10 @@ app.registerExtension({
         }
 
         let files = { options: { values: [emptyFolder] }, value: emptyFolder };
+        let rows;
         let syncRows = () => {};
         if (hasEditor) {
-            const rows = addFileRows(node, {
+            rows = addFileRows(node, {
                 browseFolder, refresh, selectFile,
                 editFolder(value) {
                     if (folder.value === value) return;
@@ -148,8 +149,9 @@ app.registerExtension({
             index.hidden = true;
             index.options.hidden = true;
             index.computeSize = () => [0, -4];
-            node.widgets.splice(node.widgets.indexOf(rows.widget), 1);
-            node.widgets.splice(node.widgets.indexOf(folder) + 1, 0, rows.widget);
+            for (const widget of rows.widgets) node.widgets.splice(node.widgets.indexOf(widget), 1);
+            node.widgets.splice(node.widgets.indexOf(folder) + 1, 0, ...rows.widgets);
+            rows.attachSockets();
             syncRows = () => rows.update({
                 path: activeFolder(),
                 options: files.options.values,
@@ -240,6 +242,7 @@ app.registerExtension({
         const configure = node.onConfigure;
         node.onConfigure = function (...args) {
             const result = configure?.apply(this, args);
+            rows?.attachSockets();
             linkedFolder = linkedFile = null;
             syncSelection();
             void refresh();
@@ -264,6 +267,7 @@ app.registerExtension({
                 const result = onConnectionsChange?.call(this, type, slot, ...args);
                 if (type !== 1 || !["folder", "text_file", "index"].includes(node.inputs?.[slot]?.name)) return result;
                 queueMicrotask(() => {
+                    rows.attachSockets();
                     if (linkedFolder?.link !== getLink("folder")) linkedFolder = null;
                     linkedFile = null;
                     void refresh();

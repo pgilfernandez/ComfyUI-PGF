@@ -292,7 +292,7 @@ class PGFLoadAndEditTextFiles(PGFLoadTextFile):
             },
             "optional": {
                 "folder": ("STRING", {"forceInput": True, "tooltip": "Absolute folder path"}),
-                "text_file": ("STRING", {"forceInput": True, "tooltip": "Filename with or without .txt"}),
+                "text_file": ("INT", {"forceInput": True, "tooltip": "Zero-based file index"}),
             },
         }
 
@@ -300,22 +300,16 @@ class PGFLoadAndEditTextFiles(PGFLoadTextFile):
 
     @classmethod
     def IS_CHANGED(cls, folder_path, index, editor, editor_source, folder=None, text_file=None):
-        if text_file is not None:
-            return float("nan")
-        return super().IS_CHANGED(folder if folder is not None else folder_path, index)
+        return super().IS_CHANGED(
+            folder if folder is not None else folder_path,
+            text_file if text_file is not None else index,
+        )
 
     def load(self, folder_path, index, editor, editor_source, folder=None, text_file=None):
         folder = folder if folder is not None else folder_path
         directory = text_directory(folder)
         files = list_text_files(directory)
-        selected_index = max(0, index)
-        if text_file is not None:
-            named_index = next((i for i, file in enumerate(files) if file.name == text_file), None)
-            if named_index is None:
-                named_index = next((i for i, file in enumerate(files) if file.stem == text_file), None)
-            if named_index is None:
-                raise ValueError(f"Text file {text_file!r} was not found in the selected folder.")
-            selected_index = named_index
+        selected_index = max(0, text_file if text_file is not None else index)
         text, filename, selected_index, total, path = self.load_selection(directory, files, selected_index)
         source = ""
         if total:

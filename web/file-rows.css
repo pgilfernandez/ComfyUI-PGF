@@ -34,7 +34,7 @@
 }
 
 .pgf-file-group:hover {
-    background: var(--muted, var(--comfy-input-bg, #333));
+    background-image: linear-gradient(rgb(255 255 255 / 5%), rgb(255 255 255 / 5%));
 }
 
 .pgf-file-group > input,
@@ -64,14 +64,17 @@
     flex: 0 0 28px;
     place-items: center;
     padding: 0;
-    color: var(--muted-foreground, var(--input-text, inherit));
+    color: #fff;
     cursor: pointer;
 }
 
 .pgf-file-group > button:hover,
-.pgf-file-group > button:focus-visible {
-    background: var(--accent, var(--comfy-menu-bg, #444));
-    color: var(--foreground, var(--input-text, inherit));
+.pgf-file-group > button:focus-visible,
+.lg-node-widgets:has(.pgf-file-rows) :is(
+    [data-widget-name="show editor"],
+    [data-widget-name="Save .txt"]
+) button:is(:hover, :focus-visible) {
+    background-image: linear-gradient(rgb(255 255 255 / 8%), rgb(255 255 255 / 8%));
 }
 
 .pgf-file-group svg {

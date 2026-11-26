@@ -169,51 +169,6 @@ def save_text_file(path, text):
             temporary_path.unlink(missing_ok=True)
 
 
-class PGFLoadTextFile:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "folder": ("STRING", {"default": "", "tooltip": "Absolute folder path"}),
-                "index": ("INT", {"default": 0, "max": 2147483647}),
-            }
-        }
-
-    RETURN_TYPES = ("STRING", "STRING", "INT", "INT", "STRING")
-    RETURN_NAMES = ("text", "filename", "index", "total", "path")
-    FUNCTION = "load"
-    CATEGORY = f"{NODE_CATEGORY}/Text"
-
-    @classmethod
-    def IS_CHANGED(cls, folder, index):
-        index = max(0, index)
-        try:
-            files = list_text_files(text_directory(folder))
-            if 0 <= index < len(files):
-                path = files[index]
-                stat = path.stat()
-                return (str(path), stat.st_mtime_ns, stat.st_size, len(files))
-        except (OSError, ValueError, RuntimeError):
-            pass
-        return float("nan")
-
-    def load(self, folder, index):
-        directory = text_directory(folder)
-        return self.load_selection(directory, list_text_files(directory), max(0, index))
-
-    @staticmethod
-    def load_selection(directory, files, index):
-        folder_path = str(directory) if directory is not None else ""
-        total = len(files)
-        if total == 0:
-            return ("", "", index, 0, folder_path)
-        if not 0 <= index < total:
-            raise ValueError(f"Index {index} is out of range for {total} text files.")
-
-        path = files[index]
-        return (path.read_text(encoding="utf-8-sig"), path.stem, index, total, folder_path)
-
-
 class PGFLoadSingleTextFile:
     @classmethod
     def INPUT_TYPES(cls):
@@ -243,50 +198,13 @@ class PGFLoadSingleTextFile:
         return (self.text_path(file).read_text(encoding="utf-8-sig"),)
 
 
-class PGFEditTextFile:
+class PGFLoadAndEditTextFiles:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "editor": ("STRING", {"default": "", "multiline": True}),
-                "path": ("STRING", {"default": "", "tooltip": "Absolute folder path"}),
-                "filename": ("STRING", {"default": "", "tooltip": "Filename without .txt"}),
-                "use_editor": ("BOOLEAN", {"default": False}),
-                "source_text": ("STRING", {"default": ""}),
-            },
-            "optional": {"text": ("STRING", {"forceInput": True})},
-        }
-
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("text",)
-    FUNCTION = "edited_text"
-    OUTPUT_NODE = True
-    CATEGORY = f"{NODE_CATEGORY}/Text"
-
-    def edited_text(self, editor, path, filename, use_editor, source_text="", text=None):
-        load_source = text is not None and (not use_editor or text != source_text)
-        result = text if load_source else editor
-        return {
-            "ui": {
-                "path": [path],
-                "filename": [filename],
-                "text": [result],
-                "source_text": [text],
-                "editor_at_run": [editor],
-                "load_source": [load_source],
-            },
-            "result": (result,),
-        }
-
-
-class PGFLoadAndEditTextFiles(PGFLoadTextFile):
-    @classmethod
-    def INPUT_TYPES(cls):
-        inputs = super().INPUT_TYPES()["required"]
-        return {
-            "required": {
-                "folder_path": inputs["folder"],
-                "index": inputs["index"],
+                "folder_path": ("STRING", {"default": "", "tooltip": "Absolute folder path"}),
+                "index": ("INT", {"default": 0, "max": 2147483647}),
                 "editor": ("STRING", {"default": "", "multiline": True}),
                 "editor_source": ("STRING", {"default": ""}),
             },
@@ -296,14 +214,39 @@ class PGFLoadAndEditTextFiles(PGFLoadTextFile):
             },
         }
 
+    RETURN_TYPES = ("STRING", "STRING", "INT", "INT", "STRING")
+    RETURN_NAMES = ("text", "filename", "index", "total", "path")
+    FUNCTION = "load"
+    CATEGORY = f"{NODE_CATEGORY}/Text"
+
     OUTPUT_NODE = True
 
     @classmethod
     def IS_CHANGED(cls, folder_path, index, editor, editor_source, folder=None, text_file=None):
-        return super().IS_CHANGED(
-            folder if folder is not None else folder_path,
-            text_file if text_file is not None else index,
-        )
+        folder = folder if folder is not None else folder_path
+        index = text_file if text_file is not None else index
+        index = max(0, index)
+        try:
+            files = list_text_files(text_directory(folder))
+            if 0 <= index < len(files):
+                path = files[index]
+                stat = path.stat()
+                return (str(path), stat.st_mtime_ns, stat.st_size, len(files))
+        except (OSError, ValueError, RuntimeError):
+            pass
+        return float("nan")
+
+    @staticmethod
+    def load_selection(directory, files, index):
+        folder_path = str(directory) if directory is not None else ""
+        total = len(files)
+        if total == 0:
+            return ("", "", index, 0, folder_path)
+        if not 0 <= index < total:
+            raise ValueError(f"Index {index} is out of range for {total} text files.")
+
+        path = files[index]
+        return (path.read_text(encoding="utf-8-sig"), path.stem, index, total, folder_path)
 
     def load(self, folder_path, index, editor, editor_source, folder=None, text_file=None):
         folder = folder if folder is not None else folder_path
@@ -376,18 +319,14 @@ class PGFDurationSelector(IndexedSelector):
 
 
 NODE_CLASS_MAPPINGS = {
-    "PGFLoadTextFile": PGFLoadTextFile,
     "PGFLoadSingleTextFile": PGFLoadSingleTextFile,
-    "PGFEditTextFile": PGFEditTextFile,
     "PGFLoadAndEditTextFiles": PGFLoadAndEditTextFiles,
     "PGFImageSelector": PGFImageSelector,
     "PGFBooleanSelector": PGFBooleanSelector,
     "PGFDurationSelector": PGFDurationSelector,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "PGFLoadTextFile": "PGF - Load Text Files",
     "PGFLoadSingleTextFile": "PGF - Load Text File",
-    "PGFEditTextFile": "PGF - Edit Text File",
     "PGFLoadAndEditTextFiles": "PGF - Load and edit text files",
     "PGFImageSelector": "PGF - Image selector",
     "PGFBooleanSelector": "PGF - Boolean selector",

@@ -198,9 +198,11 @@ class PGFLoadTextFile:
         return float("nan")
 
     def load(self, folder, index):
-        index = max(0, index)
         directory = text_directory(folder)
-        files = list_text_files(directory)
+        return self.load_selection(directory, list_text_files(directory), max(0, index))
+
+    @staticmethod
+    def load_selection(directory, files, index):
         folder_path = str(directory) if directory is not None else ""
         total = len(files)
         if total == 0:
@@ -280,21 +282,41 @@ class PGFEditTextFile:
 class PGFLoadAndEditTextFiles(PGFLoadTextFile):
     @classmethod
     def INPUT_TYPES(cls):
-        inputs = super().INPUT_TYPES()
-        inputs["required"].update({
-            "editor": ("STRING", {"default": "", "multiline": True}),
-            "editor_source": ("STRING", {"default": ""}),
-        })
-        return inputs
+        inputs = super().INPUT_TYPES()["required"]
+        return {
+            "required": {
+                "folder_path": inputs["folder"],
+                "index": inputs["index"],
+                "editor": ("STRING", {"default": "", "multiline": True}),
+                "editor_source": ("STRING", {"default": ""}),
+            },
+            "optional": {
+                "folder": ("STRING", {"forceInput": True, "tooltip": "Absolute folder path"}),
+                "text_file": ("STRING", {"forceInput": True, "tooltip": "Filename with or without .txt"}),
+            },
+        }
 
     OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(cls, folder, index, editor, editor_source):
-        return super().IS_CHANGED(folder, index)
+    def IS_CHANGED(cls, folder_path, index, editor, editor_source, folder=None, text_file=None):
+        if text_file is not None:
+            return float("nan")
+        return super().IS_CHANGED(folder if folder is not None else folder_path, index)
 
-    def load(self, folder, index, editor, editor_source):
-        text, filename, selected_index, total, path = super().load(folder, index)
+    def load(self, folder_path, index, editor, editor_source, folder=None, text_file=None):
+        folder = folder if folder is not None else folder_path
+        directory = text_directory(folder)
+        files = list_text_files(directory)
+        selected_index = max(0, index)
+        if text_file is not None:
+            named_index = next((i for i, file in enumerate(files) if file.name == text_file), None)
+            if named_index is None:
+                named_index = next((i for i, file in enumerate(files) if file.stem == text_file), None)
+            if named_index is None:
+                raise ValueError(f"Text file {text_file!r} was not found in the selected folder.")
+            selected_index = named_index
+        text, filename, selected_index, total, path = self.load_selection(directory, files, selected_index)
         source = ""
         if total:
             source = hashlib.sha256(f"{path}\0{filename}\0{text}".encode("utf-8")).hexdigest()

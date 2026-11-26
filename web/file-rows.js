@@ -45,9 +45,10 @@ export function addFileRows(node, actions) {
         group.append(field, button);
         row.append(caption, group);
         root.append(row);
+        return button;
     }
 
-    addRow("folder", folder, "folder", "Browse folder", actions.browseFolder);
+    const browse = addRow("folder", folder, "folder", "Browse folder", actions.browseFolder);
     addRow("text file", files, "refresh", "Refresh files", actions.refresh);
     const widget = node.addDOMWidget("file_rows", "pgf_file_rows", root, {
         serialize: false,
@@ -59,11 +60,13 @@ export function addFileRows(node, actions) {
 
     return {
         widget,
-        update(path, options, selected, hasFiles, error) {
+        update({ path, options, selected, hasFiles, error, folderLinked, fileLinked }) {
             if (document.activeElement !== folder && folder.value !== path) folder.value = path;
+            folder.disabled = browse.disabled = folderLinked;
+            folder.placeholder = folderLinked ? "Run to load linked folder" : "";
             files.replaceChildren(...options.map((name) => new Option(name, name)));
             files.value = selected;
-            files.disabled = !hasFiles;
+            files.disabled = !hasFiles || fileLinked;
             files.title = error ?? "";
         },
     };

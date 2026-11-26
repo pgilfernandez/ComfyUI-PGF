@@ -1,7 +1,7 @@
 import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 
-export function addFolderEditor(node, folder, index, recordWidgetChange) {
+export function addFolderEditor(node, activeFolder, index, recordWidgetChange) {
     const editor = node.widgets.find((widget) => widget.name === "editor");
     const source = node.widgets.find((widget) => widget.name === "editor_source");
     const editorSize = editor.computeSize;
@@ -22,8 +22,9 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
     function selectionMatches(file) {
         return file.folderLink === getLink("folder")
             && file.indexLink === getLink("index")
-            && (file.folderLink !== null || file.folder === folder.value)
-            && (file.indexLink !== null || file.index === Math.max(0, index.value));
+            && file.textFileLink === getLink("text_file")
+            && file.folder === activeFolder()
+            && (file.textFileLink !== null || file.indexLink !== null || file.index === Math.max(0, index.value));
     }
 
     const save = node.addWidget("button", "Save .txt", null, async () => {
@@ -81,14 +82,15 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
 
     async function loadSelection() {
         const requestId = ++loadRequest;
-        if (editorHidden() || !folder.value.trim() || getLink("folder") !== null || getLink("index") !== null) return;
+        const selectedFolder = activeFolder();
+        const folderLink = getLink("folder");
+        if (editorHidden() || !selectedFolder.trim() || getLink("index") !== null || getLink("text_file") !== null) return;
 
-        const selectedFolder = folder.value;
         const selectedIndex = Math.max(0, index.value);
         const editorBeforeLoad = editor.value;
         const isCurrent = () => requestId === loadRequest && !editorHidden() && node.graph
-            && folder.value === selectedFolder && Math.max(0, index.value) === selectedIndex
-            && getLink("folder") === null && getLink("index") === null;
+            && activeFolder() === selectedFolder && Math.max(0, index.value) === selectedIndex
+            && getLink("folder") === folderLink && getLink("index") === null && getLink("text_file") === null;
         try {
             const response = await api.fetchApi("/pgf/load-editable-text", {
                 method: "POST",
@@ -100,7 +102,7 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
             if (!response.ok) throw new Error(result.error ?? response.statusText);
             applyLoaded({
                 source: result.editor_source, path: result.path, filename: result.filename,
-                index: result.index, folder: result.folder_at_run, folderLink: null, indexLink: null,
+                index: result.index, folder: result.folder_at_run, folderLink, indexLink: null, textFileLink: null,
             }, result.text, editorBeforeLoad);
         } catch (error) {
             if (isCurrent()) toast("error", "Could not load text", error.message);
@@ -135,6 +137,7 @@ export function addFolderEditor(node, folder, index, recordWidgetChange) {
             folder: message.folder_at_run?.[0],
             folderLink: getLink("folder"),
             indexLink: getLink("index"),
+            textFileLink: getLink("text_file"),
         };
         applyLoaded(selected, message.text?.[0], message.editor_at_run?.[0]);
         return result;

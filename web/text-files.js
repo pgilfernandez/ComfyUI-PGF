@@ -49,16 +49,25 @@ app.registerExtension({
         const hasEditor = node.comfyClass === "PGFLoadAndEditTextFiles";
         if (node.comfyClass !== "PGFLoadTextFile" && !hasEditor) return;
 
-        const folder = node.widgets.find((widget) => widget.name === "folder");
+        const folder = node.widgets.find((widget) => widget.name === (hasEditor ? "folder_path" : "folder"));
         const index = node.widgets.find((widget) => widget.name === "index");
+        const getLink = (name) => node.inputs?.find((input) => input.name === name)?.link ?? null;
+        let linkedFolder = null;
+        let linkedFile = null;
+        const activeFolder = () => {
+            const link = getLink("folder");
+            if (link === null) return folder.value;
+            return linkedFolder?.link === link ? linkedFolder.value ?? "" : "";
+        };
+        const fileLinked = () => getLink("text_file") !== null || getLink("index") !== null;
         index.options.min = 0;
         let pickingFolder = false;
         async function browseFolder() {
-            if (pickingFolder) return;
+            if (pickingFolder || (hasEditor && getLink("folder") !== null)) return;
             pickingFolder = true;
             try {
                 const chosenFolder = await pickFolder(folder.value);
-                if (chosenFolder === null || !node.graph) return;
+                if (chosenFolder === null || !node.graph || (hasEditor && getLink("folder") !== null)) return;
 
                 folder.value = chosenFolder;
                 folder.callback(folder.value, app.canvas, node);
@@ -112,6 +121,7 @@ app.registerExtension({
         let fileLabels = [];
         let loadEditor;
         function selectFile(label) {
+            if (hasEditor && fileLinked()) return;
             const position = fileLabels.indexOf(label);
             if (position < 0) return;
 
@@ -135,9 +145,20 @@ app.registerExtension({
             folder.hidden = true;
             folder.options.hidden = true;
             folder.computeSize = () => [0, -4];
+            index.hidden = true;
+            index.options.hidden = true;
+            index.computeSize = () => [0, -4];
             node.widgets.splice(node.widgets.indexOf(rows.widget), 1);
             node.widgets.splice(node.widgets.indexOf(folder) + 1, 0, rows.widget);
-            syncRows = () => rows.update(folder.value, files.options.values, files.value, fileLabels.length > 0, files.options.tooltip);
+            syncRows = () => rows.update({
+                path: activeFolder(),
+                options: files.options.values,
+                selected: files.value,
+                hasFiles: fileLabels.length > 0,
+                error: files.options.tooltip,
+                folderLinked: getLink("folder") !== null,
+                fileLinked: fileLinked(),
+            });
         } else {
             const browse = node.addWidget("button", "Browse folder", null, browseFolder, { serialize: false });
             files = node.addWidget("combo", "Text file", emptyFolder, selectFile, { values: [emptyFolder], serialize: false });
@@ -157,7 +178,8 @@ app.registerExtension({
             if (index.value < 0) index.value = 0;
             if (!fileLabels.length) return;
 
-            const label = fileLabels[index.value];
+            const position = hasEditor && fileLinked() ? linkedFile?.index : index.value;
+            const label = fileLabels[position];
             files.options.values = label === undefined ? [noSelection, ...fileLabels] : fileLabels;
             files.value = label ?? noSelection;
             syncRows();
@@ -172,10 +194,10 @@ app.registerExtension({
         let requestId = 0;
         async function refresh() {
             const currentRequest = ++requestId;
-            const path = folder.value.trim();
+            const path = (hasEditor ? activeFolder() : folder.value).trim();
             delete files.options.tooltip;
             if (!path) {
-                showStatus(emptyFolder);
+                showStatus(hasEditor && getLink("folder") !== null ? "Run to load linked folder" : emptyFolder);
                 return;
             }
 
@@ -218,12 +240,36 @@ app.registerExtension({
         const configure = node.onConfigure;
         node.onConfigure = function (...args) {
             const result = configure?.apply(this, args);
+            linkedFolder = linkedFile = null;
             syncSelection();
             void refresh();
             return result;
         };
         if (hasEditor) {
-            loadEditor = addFolderEditor(node, folder, index, recordWidgetChange);
+            loadEditor = addFolderEditor(node, activeFolder, index, recordWidgetChange);
+            const onExecuted = node.onExecuted;
+            node.onExecuted = function (message, ...args) {
+                const folderLink = getLink("folder");
+                const nextFolder = message.folder_at_run?.[0];
+                const folderChanged = folderLink !== null && linkedFolder?.value !== nextFolder;
+                if (folderLink !== null) linkedFolder = { link: folderLink, value: nextFolder };
+                linkedFile = fileLinked() ? { index: message.index?.[0] } : null;
+                const result = onExecuted?.call(this, message, ...args);
+                if (folderChanged) void refresh();
+                else syncSelection();
+                return result;
+            };
+            const onConnectionsChange = node.onConnectionsChange;
+            node.onConnectionsChange = function (type, slot, ...args) {
+                const result = onConnectionsChange?.call(this, type, slot, ...args);
+                if (type !== 1 || !["folder", "text_file", "index"].includes(node.inputs?.[slot]?.name)) return result;
+                queueMicrotask(() => {
+                    if (linkedFolder?.link !== getLink("folder")) linkedFolder = null;
+                    linkedFile = null;
+                    void refresh();
+                });
+                return result;
+            };
         }
         void refresh();
     },

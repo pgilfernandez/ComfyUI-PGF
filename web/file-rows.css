@@ -18,6 +18,7 @@
 }
 
 .pgf-file-group {
+    position: relative;
     display: flex;
     height: 28px;
     min-width: 0;
@@ -33,7 +34,7 @@
     outline-offset: -1px;
 }
 
-.pgf-file-group:hover {
+.pgf-file-group > :is(input, select):hover {
     background-image: linear-gradient(rgb(255 255 255 / 5%), rgb(255 255 255 / 5%));
 }
 
@@ -54,6 +55,24 @@
     outline: none;
 }
 
+.pgf-file-group > select {
+    appearance: none;
+    padding-inline-end: 24px;
+}
+
+.pgf-file-group:has(> select)::after {
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-end: 38px;
+    width: 6px;
+    height: 6px;
+    border: solid var(--muted-foreground, #aaa);
+    border-width: 0 1.5px 1.5px 0;
+    transform: translateY(-70%) rotate(45deg);
+    pointer-events: none;
+    content: "";
+}
+
 .pgf-file-group option {
     background: var(--popover, var(--comfy-menu-bg, #252525));
     color: var(--popover-foreground, var(--input-text, inherit));
@@ -64,6 +83,7 @@
     flex: 0 0 28px;
     place-items: center;
     padding: 0;
+    border-inline-start: 1px solid var(--node-border, var(--border-color, #666));
     color: #fff;
     cursor: pointer;
 }
